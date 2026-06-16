@@ -46,6 +46,7 @@ app.add_middleware(
     allow_origins=[
         settings.FRONTEND_URL,
         "http://localhost:3000",
+        "https://nexus-pro-six.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
