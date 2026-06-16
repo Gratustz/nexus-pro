@@ -44,9 +44,10 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        settings.FRONTEND_URL,
         "http://localhost:3000",
         "https://nexus-pro-six.vercel.app",
+        "https://nexus-pro.vercel.app",
+        settings.FRONTEND_URL,
     ],
     allow_credentials=True,
     allow_methods=["*"],
