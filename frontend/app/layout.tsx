@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
-import Link from 'next/link'
+import Navbar from './components/Navbar'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -18,34 +18,8 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${inter.className} bg-gray-950 text-white min-h-screen`}>
-        <nav className="border-b border-gray-800 bg-gray-900 sticky top-0 z-50">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between h-16">
-              <Link href="/" className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center font-bold text-white text-sm">
-                  NP
-                </div>
-                <span className="font-bold text-xl text-white">
-                  Nexus <span className="text-blue-400">Pro</span>
-                </span>
-              </Link>
-
-              <div className="hidden md:flex items-center gap-8">
-                <Link href="/dashboard" className="text-gray-300 hover:text-white text-sm transition">
-                  Dashboard
-                </Link>
-                <Link href="/pricing" className="text-gray-300 hover:text-white text-sm transition">
-                  Pricing
-                </Link>
-              </div>
-
-              <NavbarAuth />
-            </div>
-          </div>
-        </nav>
-
+        <Navbar />
         <main>{children}</main>
-
         <footer className="border-t border-gray-800 mt-20 py-10">
           <div className="max-w-7xl mx-auto px-4 text-center">
             <div className="flex items-center justify-center gap-2 mb-4">
@@ -63,43 +37,5 @@ export default function RootLayout({
         </footer>
       </body>
     </html>
-  )
-}
-
-function NavbarAuth() {
-  return (
-    <div id="navbar-auth" className="flex items-center gap-3">
-      <Link
-        href="/auth/login"
-        className="text-gray-300 hover:text-white text-sm transition"
-        id="login-link"
-      >
-        Login
-      </Link>
-      <Link
-        href="/auth/register"
-        className="bg-blue-500 hover:bg-blue-600 text-white text-sm px-4 py-2 rounded-lg transition font-medium"
-        id="register-link"
-      >
-        Get Started
-      </Link>
-      <script dangerouslySetInnerHTML={{__html: `
-        (function() {
-          try {
-            const user = JSON.parse(localStorage.getItem('user') || 'null');
-            const token = localStorage.getItem('token');
-            if (user && token) {
-              const auth = document.getElementById('navbar-auth');
-              if (auth) {
-                auth.innerHTML = '<span style="color:#9ca3af;font-size:14px">Hi, ' + user.name + '</span>' +
-                  '<span style="background:#1e3a5f;color:#60a5fa;font-size:11px;padding:2px 8px;border-radius:9999px;font-weight:500;text-transform:uppercase">' + user.plan + '</span>' +
-                  '<a href="/dashboard" style="color:#d1d5db;font-size:14px;text-decoration:none">Dashboard</a>' +
-                  '<button onclick="localStorage.clear();window.location.href=\\'/\\';" style="background:#374151;color:#d1d5db;border:none;padding:6px 14px;border-radius:8px;font-size:13px;cursor:pointer">Logout</button>';
-              }
-            }
-          } catch(e) {}
-        })();
-      `}} />
-    </div>
   )
 }
