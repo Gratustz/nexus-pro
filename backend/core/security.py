@@ -1,31 +1,44 @@
 from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
-from passlib.context import CryptContext
+import hashlib
+import hmac
+import secrets
 from core.config import settings
 
-# --- Password hashing ---
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-
-# --- Hash a password ---
+# --- Hash a password using SHA256 (avoids bcrypt Python 3.13 issues) ---
 def hash_password(password: str) -> str:
-    # Truncate to 72 bytes for bcrypt compatibility
-    password_bytes = password.encode('utf-8')[:72]
-    password = password_bytes.decode('utf-8', errors='ignore')
-    return pwd_context.hash(password)
+    salt = secrets.token_hex(32)
+    key = hashlib.pbkdf2_hmac(
+        'sha256',
+        password.encode('utf-8'),
+        salt.encode('utf-8'),
+        100000
+    )
+    return f"{salt}${key.hex()}"
 
 
 # --- Verify a password ---
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    # Truncate to 72 bytes for bcrypt compatibility
-    password_bytes = plain_password.encode('utf-8')[:72]
-    plain_password = password_bytes.decode('utf-8', errors='ignore')
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        salt, key = hashed_password.split('$')
+        new_key = hashlib.pbkdf2_hmac(
+            'sha256',
+            plain_password.encode('utf-8'),
+            salt.encode('utf-8'),
+            100000
+        )
+        return hmac.compare_digest(key, new_key.hex())
+    except Exception:
+        return False
 
 
 # --- Create JWT token ---
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(
+    data: dict,
+    expires_delta: Optional[timedelta] = None
+) -> str:
     to_encode = data.copy()
 
     if expires_delta:
