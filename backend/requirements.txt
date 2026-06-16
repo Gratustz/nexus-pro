@@ -21,3 +21,4 @@ apscheduler
 anthropic
 python-dotenv
 email-validator
+scipy
