@@ -1,69 +1,65 @@
-'use client';
+'use client'
 
-import { useState } from 'react';
-import Link from 'next/link';
+import { useState } from 'react'
+import Link from 'next/link'
 
 export default function Login() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
 
   const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
+    e.preventDefault()
+    setLoading(true)
+    setError('')
 
     try {
-      const formData = new FormData();
-      formData.append('username', email);
-      formData.append('password', password);
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+      const formData = new FormData()
+      formData.append('username', email)
+      formData.append('password', password)
 
-      const res = await fetch('http://localhost:8000/auth/login', {
+      const res = await fetch(`${API_URL}/auth/login`, {
         method: 'POST',
         body: formData,
-      });
+      })
 
-      const data = await res.json();
+      const data = await res.json()
 
       if (!res.ok) {
-        setError(data.detail || 'Login failed');
-        return;
+        setError(data.detail || 'Login failed')
+        return
       }
 
-      localStorage.setItem('token', data.access_token);
-      localStorage.setItem(
-        'user',
-        JSON.stringify({
-          email: data.user_email,
-          name: data.user_name,
-          plan: data.plan,
-        })
-      );
+      localStorage.setItem('token', data.access_token)
+      localStorage.setItem('user', JSON.stringify({
+        email: data.user_email,
+        name: data.user_name,
+        plan: data.plan,
+      }))
 
-      window.location.href = '/dashboard';
+      window.location.href = '/dashboard'
+
     } catch (err) {
-      setError('Connection error. Make sure the backend is running.');
+      setError('Connection error. Make sure the backend is running.')
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center px-4">
       <div className="w-full max-w-md">
-        {/* Logo */}
+
         <div className="text-center mb-8">
           <div className="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center font-bold text-white text-lg mx-auto mb-4">
             NP
           </div>
           <h1 className="text-2xl font-bold text-white">Welcome back</h1>
-          <p className="text-gray-400 mt-2">
-            Sign in to your Nexus Pro account
-          </p>
+          <p className="text-gray-400 mt-2">Sign in to your Nexus Pro account</p>
         </div>
 
-        {/* Form */}
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8">
           {error && (
             <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 mb-6">
@@ -110,16 +106,13 @@ export default function Login() {
           </form>
 
           <p className="text-center text-gray-400 text-sm mt-6">
-            Don't have an account?{' '}
-            <Link
-              href="/auth/register"
-              className="text-blue-400 hover:text-blue-300 font-medium"
-            >
+            Don&apos;t have an account?{' '}
+            <Link href="/auth/register" className="text-blue-400 hover:text-blue-300 font-medium">
               Create one free
             </Link>
           </p>
         </div>
       </div>
     </div>
-  );
+  )
 }
