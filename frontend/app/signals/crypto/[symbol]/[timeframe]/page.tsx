@@ -33,6 +33,18 @@ const TIMEFRAME_LABELS: Record<string, string> = {
   '1M': '1 Month',
 }
 
+const TIMEFRAME_TRADER: Record<string, string> = {
+  '1m': 'Scalper',
+  '5m': 'Scalper',
+  '15m': 'Day Trader',
+  '30m': 'Day Trader',
+  '1h': 'Swing Trader',
+  '12h': 'Swing Trader',
+  '1d': 'Position Trader',
+  '1w': 'Investor',
+  '1M': 'Long-term Investor',
+}
+
 function IndicatorRow({ label, value, status }: {
   label: string
   value: string
@@ -89,61 +101,30 @@ export default function TimeframePage() {
     setAiAnalysis('')
 
     try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
+      const token = localStorage.getItem('token')
+      const response = await fetch(`${API_URL}/signals/ai-analysis`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 1000,
-          messages: [{
-            role: 'user',
-            content: `You are Nexus Pro — the best crypto trading analyst in Africa and the world.
-
-Analyze ${symbol.replace('USDT', '')}/USDT on the ${TIMEFRAME_LABELS[timeframe] || timeframe} timeframe.
-
-Current Signal: ${data.signal}
-
-Technical Indicators:
-- Price: $${data.indicators?.price}
-- RSI (14): ${data.indicators?.rsi} ${data.indicators?.rsi < 30 ? '(Oversold)' : data.indicators?.rsi > 70 ? '(Overbought)' : '(Neutral)'}
-- Stochastic RSI: ${data.indicators?.stoch_rsi}
-- EMA 20: ${data.indicators?.ema20} — Price is ${data.indicators?.above_ema20 ? 'ABOVE' : 'BELOW'}
-- EMA 50: ${data.indicators?.ema50} — Price is ${data.indicators?.above_ema50 ? 'ABOVE' : 'BELOW'}
-- EMA 200: ${data.indicators?.ema200} — Price is ${data.indicators?.above_ema200 ? 'ABOVE' : 'BELOW'}
-- MACD: ${data.indicators?.macd}
-- MACD Signal: ${data.indicators?.macd_signal}
-- MACD Histogram: ${data.indicators?.macd_histogram} ${data.indicators?.macd_histogram > 0 ? '(Bullish)' : '(Bearish)'}
-- Bollinger Upper: ${data.indicators?.bb_upper}
-- Bollinger Mid: ${data.indicators?.bb_mid}
-- Bollinger Lower: ${data.indicators?.bb_lower}
-- ATR: ${data.indicators?.atr}
-- VWAP: ${data.indicators?.vwap} — Price is ${data.indicators?.above_vwap ? 'ABOVE' : 'BELOW'}
-- 24h Change: ${data.stats_24h?.price_change_pct}%
-- 24h High: $${data.stats_24h?.high_24h}
-- 24h Low: $${data.stats_24h?.low_24h}
-- 24h Volume: ${data.stats_24h?.volume_24h}
-
-Provide a comprehensive professional trading analysis with:
-
-1. SIGNAL SUMMARY — State the signal clearly and why
-2. TECHNICAL ANALYSIS — Explain what the indicators are saying
-3. KEY LEVELS — Identify support and resistance levels
-4. TRADE SETUP — Entry point, Stop Loss and Take Profit levels
-5. RISK ASSESSMENT — Risk level (Low/Medium/High) and explanation
-6. MARKET CONTEXT — What is happening in the broader market
-7. RECOMMENDATION — Clear actionable advice for a trader
-
-Write like the best trader in Africa — clear, confident, professional and actionable.`
-          }]
+          symbol,
+          timeframe: TIMEFRAME_LABELS[timeframe] || timeframe,
+          indicators: data.indicators,
+          signal: data.signal,
+          stats: data.stats_24h
         })
       })
 
       const result = await response.json()
-      if (result.content && result.content[0]) {
-        setAiAnalysis(result.content[0].text)
+      if (result.analysis) {
+        setAiAnalysis(result.analysis)
+      } else {
+        setAiAnalysis('Failed to generate analysis. Please try again.')
       }
     } catch (e) {
-      setAiAnalysis('Failed to generate AI analysis. Please try again.')
+      setAiAnalysis('Connection error. Please try again.')
     } finally {
       setLoadingAi(false)
     }
@@ -198,7 +179,12 @@ Write like the best trader in Africa — clear, confident, professional and acti
               <h1 className="text-3xl font-bold text-white">
                 {symbol.replace('USDT', '')}/USDT
               </h1>
-              <p className="text-gray-400">{TIMEFRAME_LABELS[timeframe]} Analysis</p>
+              <div className="flex items-center gap-2 mt-1">
+                <p className="text-gray-400">{TIMEFRAME_LABELS[timeframe]} Analysis</p>
+                <span className="bg-gray-800 text-gray-300 text-xs px-2 py-0.5 rounded-full">
+                  {TIMEFRAME_TRADER[timeframe]}
+                </span>
+              </div>
             </div>
             <div className="text-right">
               <p className="text-4xl font-bold text-white">
@@ -391,23 +377,21 @@ Write like the best trader in Africa — clear, confident, professional and acti
 
           {aiAnalysis && (
             <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-6">
-              <div className="prose prose-invert max-w-none">
-                {aiAnalysis.split('\n').map((line, i) => {
-                  if (line.startsWith('##') || line.match(/^\d\./)) {
-                    return (
-                      <h4 key={i} className="text-blue-400 font-bold text-sm mt-4 mb-2">
-                        {line.replace(/^#+\s*/, '').replace(/^\d+\.\s*/, '')}
-                      </h4>
-                    )
-                  }
-                  if (line.trim() === '') return <br key={i} />
+              {aiAnalysis.split('\n').map((line, i) => {
+                if (line.startsWith('##') || line.match(/^\d\./)) {
                   return (
-                    <p key={i} className="text-gray-300 text-sm leading-relaxed">
-                      {line}
-                    </p>
+                    <h4 key={i} className="text-blue-400 font-bold text-sm mt-4 mb-2">
+                      {line.replace(/^#+\s*/, '').replace(/^\d+\.\s*/, '')}
+                    </h4>
                   )
-                })}
-              </div>
+                }
+                if (line.trim() === '') return <br key={i} />
+                return (
+                  <p key={i} className="text-gray-300 text-sm leading-relaxed">
+                    {line}
+                  </p>
+                )
+              })}
             </div>
           )}
         </div>

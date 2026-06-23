@@ -223,3 +223,73 @@ async def get_sports_signals(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error fetching sports signals"
         )
+    # --- AI Analysis endpoint ---
+@router.post("/ai-analysis")
+async def get_ai_analysis(
+    request: dict,
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        from engines.ai_signal import AISignal
+        ai = AISignal()
+
+        symbol = request.get("symbol", "")
+        timeframe = request.get("timeframe", "")
+        indicators = request.get("indicators", {})
+        signal = request.get("signal", "HOLD")
+        stats = request.get("stats", {})
+
+        prompt = f"""You are Nexus Pro — the best crypto trading analyst in Africa and the world.
+
+Analyze {symbol.replace('USDT', '')}/USDT on the {timeframe} timeframe.
+
+Current Signal: {signal}
+
+Technical Indicators:
+- Price: ${indicators.get('price')}
+- RSI (14): {indicators.get('rsi')} {'(Oversold)' if indicators.get('rsi', 50) < 30 else '(Overbought)' if indicators.get('rsi', 50) > 70 else '(Neutral)'}
+- Stochastic RSI: {indicators.get('stoch_rsi')}
+- EMA 20: {indicators.get('ema20')} — Price is {'ABOVE' if indicators.get('above_ema20') else 'BELOW'}
+- EMA 50: {indicators.get('ema50')} — Price is {'ABOVE' if indicators.get('above_ema50') else 'BELOW'}
+- EMA 200: {indicators.get('ema200')} — Price is {'ABOVE' if indicators.get('above_ema200') else 'BELOW'}
+- MACD: {indicators.get('macd')}
+- MACD Signal: {indicators.get('macd_signal')}
+- MACD Histogram: {indicators.get('macd_histogram')} {'(Bullish)' if indicators.get('macd_histogram', 0) > 0 else '(Bearish)'}
+- Bollinger Upper: {indicators.get('bb_upper')}
+- Bollinger Mid: {indicators.get('bb_mid')}
+- Bollinger Lower: {indicators.get('bb_lower')}
+- ATR: {indicators.get('atr')}
+- VWAP: {indicators.get('vwap')} — Price is {'ABOVE' if indicators.get('above_vwap') else 'BELOW'}
+- 24h Change: {stats.get('price_change_pct')}%
+- 24h High: ${stats.get('high_24h')}
+- 24h Low: ${stats.get('low_24h')}
+- Volume: {stats.get('volume_24h')}
+
+Provide a comprehensive professional trading analysis with:
+
+1. SIGNAL SUMMARY — State the signal clearly and why
+2. TECHNICAL ANALYSIS — Explain what the indicators are saying
+3. KEY LEVELS — Identify support and resistance levels
+4. TRADE SETUP — Entry point, Stop Loss and Take Profit levels
+5. RISK ASSESSMENT — Risk level (Low/Medium/High) and explanation
+6. MARKET CONTEXT — What is happening in the broader market
+7. RECOMMENDATION — Clear actionable advice for a trader
+
+Write like the best trader in Africa — clear, confident, professional and actionable."""
+
+        import anthropic
+        client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+        message = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1000,
+            messages=[{"role": "user", "content": prompt}]
+        )
+
+        return {"analysis": message.content[0].text}
+
+    except Exception as e:
+        logger.error(f"AI analysis error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"AI analysis failed: {str(e)}"
+        )
