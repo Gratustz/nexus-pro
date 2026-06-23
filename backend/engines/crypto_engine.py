@@ -10,10 +10,8 @@ from core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# --- Symbols to analyze ---
 SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"]
 
-# --- 9 Timeframes ---
 TIMEFRAMES = {
     "1m":  "1m",
     "5m":  "5m",
@@ -31,16 +29,9 @@ class CryptoEngine:
 
     def __init__(self):
         self.base_url = "https://api.binance.com/api/v3"
-        self.api_key = settings.BINANCE_API_KEY
         self.results = {}
 
-    # --- Fetch OHLCV data from Binance ---
-    def fetch_klines(
-        self,
-        symbol: str,
-        interval: str,
-        limit: int = 200
-    ):
+    def fetch_klines(self, symbol: str, interval: str, limit: int = 200):
         try:
             url = f"{self.base_url}/klines"
             params = {
@@ -48,17 +39,15 @@ class CryptoEngine:
                 "interval": interval,
                 "limit": limit
             }
-            headers = {"X-MBX-APIKEY": self.api_key}
-            response = requests.get(
-                url,
-                params=params,
-                headers=headers,
-                timeout=10
-            )
+            response = requests.get(url, params=params, timeout=15)
             data = response.json()
 
             if isinstance(data, dict) and data.get("code"):
-                logger.error(f"Binance error: {data}")
+                logger.error(f"Binance error for {symbol} {interval}: {data}")
+                return None
+
+            if not isinstance(data, list) or len(data) == 0:
+                logger.warning(f"No data for {symbol} {interval}")
                 return None
 
             df = pd.DataFrame(data, columns=[
@@ -77,30 +66,39 @@ class CryptoEngine:
             return df
 
         except Exception as e:
-            logger.error(
-                f"Error fetching klines for {symbol} {interval}: {e}"
-            )
+            logger.error(f"Error fetching klines for {symbol} {interval}: {e}")
             return None
 
-    # --- Get current price ---
     def get_current_price(self, symbol: str) -> float:
         try:
             url = f"{self.base_url}/ticker/price"
             params = {"symbol": symbol}
-            headers = {"X-MBX-APIKEY": self.api_key}
-            response = requests.get(
-                url,
-                params=params,
-                headers=headers,
-                timeout=5
-            )
+            response = requests.get(url, params=params, timeout=10)
             data = response.json()
             return float(data.get("price", 0))
         except Exception as e:
             logger.error(f"Error getting price for {symbol}: {e}")
             return 0.0
 
-    # --- Calculate all indicators ---
+    def get_24hr_stats(self, symbol: str) -> dict:
+        try:
+            url = f"{self.base_url}/ticker/24hr"
+            params = {"symbol": symbol}
+            response = requests.get(url, params=params, timeout=10)
+            data = response.json()
+            return {
+                "price_change_pct": round(
+                    float(data.get("priceChangePercent", 0)), 2
+                ),
+                "high_24h": round(float(data.get("highPrice", 0)), 4),
+                "low_24h": round(float(data.get("lowPrice", 0)), 4),
+                "volume_24h": round(float(data.get("volume", 0)), 2),
+                "trades_24h": int(data.get("count", 0)),
+            }
+        except Exception as e:
+            logger.error(f"Error getting 24hr stats for {symbol}: {e}")
+            return {}
+
     def calculate_indicators(self, df: pd.DataFrame) -> dict:
         try:
             close = df["close"]
@@ -108,47 +106,36 @@ class CryptoEngine:
             low = df["low"]
             volume = df["volume"]
 
-            # RSI
             rsi = RSIIndicator(close=close, window=14)
             rsi_value = round(float(rsi.rsi().iloc[-1]), 2)
 
-            # Stochastic RSI
             stoch = StochasticOscillator(
                 high=high, low=low, close=close, window=14
             )
             stoch_value = round(float(stoch.stoch().iloc[-1]), 2)
 
-            # EMA 200
             ema200 = EMAIndicator(close=close, window=min(200, len(close)-1))
             ema200_value = round(float(ema200.ema_indicator().iloc[-1]), 6)
 
-            # EMA 50
             ema50 = EMAIndicator(close=close, window=min(50, len(close)-1))
             ema50_value = round(float(ema50.ema_indicator().iloc[-1]), 6)
 
-            # EMA 20
             ema20 = EMAIndicator(close=close, window=min(20, len(close)-1))
             ema20_value = round(float(ema20.ema_indicator().iloc[-1]), 6)
 
-            # Bollinger Bands
             bb = BollingerBands(close=close, window=20, window_dev=2)
             bb_upper = round(float(bb.bollinger_hband().iloc[-1]), 6)
             bb_lower = round(float(bb.bollinger_lband().iloc[-1]), 6)
             bb_mid = round(float(bb.bollinger_mavg().iloc[-1]), 6)
 
-            # ATR
-            atr = AverageTrueRange(
-                high=high, low=low, close=close, window=14
-            )
+            atr = AverageTrueRange(high=high, low=low, close=close, window=14)
             atr_value = round(float(atr.average_true_range().iloc[-1]), 6)
 
-            # MACD
             macd = MACD(close=close)
             macd_value = round(float(macd.macd().iloc[-1]), 6)
             macd_signal = round(float(macd.macd_signal().iloc[-1]), 6)
             macd_hist = round(float(macd.macd_diff().iloc[-1]), 6)
 
-            # VWAP
             vwap = round(
                 float(
                     (close * volume).cumsum().iloc[-1] /
@@ -156,7 +143,6 @@ class CryptoEngine:
                 ), 6
             )
 
-            # Current price
             current_price = round(float(close.iloc[-1]), 6)
 
             return {
@@ -184,7 +170,6 @@ class CryptoEngine:
             logger.error(f"Error calculating indicators: {e}")
             return {}
 
-    # --- Generate signal direction ---
     def generate_signal(self, indicators: dict) -> str:
         score = 0
 
@@ -200,7 +185,6 @@ class CryptoEngine:
         macd_hist = indicators.get("macd_histogram", 0)
         above_vwap = indicators.get("above_vwap", False)
 
-        # RSI signals
         if rsi < 25:
             score += 3
         elif rsi < 35:
@@ -214,7 +198,6 @@ class CryptoEngine:
         elif rsi > 55:
             score -= 1
 
-        # EMA signals
         if price > ema200:
             score += 2
         else:
@@ -230,13 +213,11 @@ class CryptoEngine:
         else:
             score -= 1
 
-        # Bollinger Bands
         if price <= bb_lower:
             score += 2
         elif price >= bb_upper:
             score -= 2
 
-        # MACD
         if macd > macd_signal:
             score += 1
         else:
@@ -247,13 +228,11 @@ class CryptoEngine:
         else:
             score -= 1
 
-        # VWAP
         if above_vwap:
             score += 1
         else:
             score -= 1
 
-        # Final signal
         if score >= 7:
             return "STRONG BUY"
         elif score >= 3:
@@ -265,45 +244,16 @@ class CryptoEngine:
         else:
             return "HOLD"
 
-    # --- Get 24hr stats ---
-    def get_24hr_stats(self, symbol: str) -> dict:
-        try:
-            url = f"{self.base_url}/ticker/24hr"
-            params = {"symbol": symbol}
-            headers = {"X-MBX-APIKEY": self.api_key}
-            response = requests.get(
-                url,
-                params=params,
-                headers=headers,
-                timeout=5
-            )
-            data = response.json()
-            return {
-                "price_change_pct": round(
-                    float(data.get("priceChangePercent", 0)), 2
-                ),
-                "high_24h": round(float(data.get("highPrice", 0)), 4),
-                "low_24h": round(float(data.get("lowPrice", 0)), 4),
-                "volume_24h": round(float(data.get("volume", 0)), 2),
-                "trades_24h": int(data.get("count", 0)),
-            }
-        except Exception as e:
-            logger.error(f"Error getting 24hr stats for {symbol}: {e}")
-            return {}
-
-    # --- Run full analysis for all symbols ---
     async def run(self) -> dict:
         results = {}
 
         for symbol in SYMBOLS:
             symbol_data = {}
 
-            # Get current price and 24hr stats
             current_price = self.get_current_price(symbol)
             stats_24h = self.get_24hr_stats(symbol)
 
             for tf_name, tf_value in TIMEFRAMES.items():
-                # Use more candles for longer timeframes
                 limit = 200 if tf_name in [
                     "1m", "5m", "15m", "30m"
                 ] else 100
@@ -314,7 +264,6 @@ class CryptoEngine:
                     indicators = self.calculate_indicators(df)
                     signal = self.generate_signal(indicators)
 
-                    # Update with real current price
                     if current_price > 0:
                         indicators["price"] = current_price
 
