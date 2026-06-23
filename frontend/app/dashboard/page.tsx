@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
-// --- Signal Badge ---
 function SignalBadge({ signal }: { signal: string }) {
   const colors: Record<string, string> = {
     'STRONG BUY': 'bg-green-500 text-white',
@@ -22,7 +21,6 @@ function SignalBadge({ signal }: { signal: string }) {
   )
 }
 
-// --- Overall Signal from all timeframes ---
 function getOverallSignal(timeframes: Record<string, any>): string {
   const scores: Record<string, number> = {
     'STRONG BUY': 2, 'BUY': 1, 'HOLD': 0, 'SELL': -1, 'STRONG SELL': -2
@@ -38,9 +36,7 @@ function getOverallSignal(timeframes: Record<string, any>): string {
   return 'HOLD'
 }
 
-// --- Crypto Analysis Card ---
 function CryptoCard({ symbol, data }: { symbol: string, data: Record<string, any> }) {
-  const [expanded, setExpanded] = useState(false)
   const overallSignal = getOverallSignal(data)
   const timeframes = ['1m', '5m', '15m', '30m', '1h', '12h', '1d', '1w', '1M']
   const latest = data['1m'] || data['1h'] || Object.values(data)[0] as any
@@ -54,7 +50,10 @@ function CryptoCard({ symbol, data }: { symbol: string, data: Record<string, any
   }
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden hover:border-gray-700 transition">
+    <Link
+      href={`/signals/crypto/${symbol}`}
+      className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden hover:border-blue-500/50 transition block group"
+    >
       {/* Header */}
       <div className="p-5 border-b border-gray-800">
         <div className="flex items-center justify-between mb-3">
@@ -125,7 +124,7 @@ function CryptoCard({ symbol, data }: { symbol: string, data: Record<string, any
             return (
               <div key={tf} className={`border rounded-lg p-1 text-center ${bgColor}`}>
                 <p className="text-gray-400 text-xs mb-0.5">{tf}</p>
-                <p className={`text-xs font-bold ${textColor}`} style={{fontSize: '9px'}}>
+                <p className={`font-bold ${textColor}`} style={{fontSize: '9px'}}>
                   {sig === 'STRONG BUY' ? 'S.BUY' :
                    sig === 'STRONG SELL' ? 'S.SELL' : sig}
                 </p>
@@ -134,185 +133,15 @@ function CryptoCard({ symbol, data }: { symbol: string, data: Record<string, any
           })}
         </div>
 
-        {/* Expand Button */}
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="w-full text-xs text-gray-400 hover:text-white py-1 transition flex items-center justify-center gap-1"
-        >
-          {expanded ? '▲ Hide Analysis' : '▼ Full Professional Analysis'}
-        </button>
-      </div>
-
-      {/* Full Analysis — Expanded */}
-      {expanded && (
-        <div className="border-t border-gray-800 p-4">
-          <p className="text-white font-bold text-sm mb-4">📊 Full Technical Analysis</p>
-
-          {timeframes.map(tf => {
-            const tfData = data[tf]
-            if (!tfData) return null
-            const ind = tfData.indicators || {}
-
-            return (
-              <div key={tf} className="mb-4 bg-gray-800/50 rounded-xl p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="bg-gray-700 text-gray-300 text-xs px-2 py-1 rounded-lg font-bold">{tf}</span>
-                    <span className="text-gray-400 text-xs">
-                      {tf === '1m' ? '1 Minute' :
-                       tf === '5m' ? '5 Minutes' :
-                       tf === '15m' ? '15 Minutes' :
-                       tf === '30m' ? '30 Minutes' :
-                       tf === '1h' ? '1 Hour' :
-                       tf === '12h' ? '12 Hours' :
-                       tf === '1d' ? '1 Day' :
-                       tf === '1w' ? '1 Week' : '1 Month'}
-                    </span>
-                  </div>
-                  <SignalBadge signal={tfData.signal} />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  {/* Momentum */}
-                  <div>
-                    <p className="text-gray-500 text-xs mb-2 font-medium">MOMENTUM</p>
-                    <div className="space-y-1.5">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-gray-400">RSI (14)</span>
-                        <span className={`font-bold ${ind.rsi < 30 ? 'text-green-400' : ind.rsi > 70 ? 'text-red-400' : 'text-white'}`}>
-                          {ind.rsi?.toFixed(2)}
-                          <span className="text-gray-500 ml-1">
-                            {ind.rsi < 30 ? '(Oversold)' : ind.rsi > 70 ? '(Overbought)' : '(Neutral)'}
-                          </span>
-                        </span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-gray-400">Stoch RSI</span>
-                        <span className="text-white font-bold">{ind.stoch_rsi?.toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-gray-400">MACD</span>
-                        <span className={`font-bold ${ind.macd > ind.macd_signal ? 'text-green-400' : 'text-red-400'}`}>
-                          {ind.macd?.toFixed(4)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-gray-400">MACD Signal</span>
-                        <span className="text-white font-bold">{ind.macd_signal?.toFixed(4)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-gray-400">MACD Histogram</span>
-                        <span className={`font-bold ${ind.macd_histogram > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                          {ind.macd_histogram?.toFixed(4)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Trend */}
-                  <div>
-                    <p className="text-gray-500 text-xs mb-2 font-medium">TREND</p>
-                    <div className="space-y-1.5">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-gray-400">EMA 20</span>
-                        <span className={`font-bold ${ind.above_ema20 ? 'text-green-400' : 'text-red-400'}`}>
-                          {ind.ema20?.toFixed(4)} {ind.above_ema20 ? '↑' : '↓'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-gray-400">EMA 50</span>
-                        <span className={`font-bold ${ind.above_ema50 ? 'text-green-400' : 'text-red-400'}`}>
-                          {ind.ema50?.toFixed(4)} {ind.above_ema50 ? '↑' : '↓'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-gray-400">EMA 200</span>
-                        <span className={`font-bold ${ind.above_ema200 ? 'text-green-400' : 'text-red-400'}`}>
-                          {ind.ema200?.toFixed(4)} {ind.above_ema200 ? '↑' : '↓'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-gray-400">VWAP</span>
-                        <span className={`font-bold ${ind.above_vwap ? 'text-green-400' : 'text-red-400'}`}>
-                          {ind.vwap?.toFixed(4)} {ind.above_vwap ? '↑' : '↓'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Volatility */}
-                  <div>
-                    <p className="text-gray-500 text-xs mb-2 font-medium">VOLATILITY</p>
-                    <div className="space-y-1.5">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-gray-400">BB Upper</span>
-                        <span className="text-white font-bold">{ind.bb_upper?.toFixed(4)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-gray-400">BB Middle</span>
-                        <span className="text-white font-bold">{ind.bb_mid?.toFixed(4)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-gray-400">BB Lower</span>
-                        <span className="text-white font-bold">{ind.bb_lower?.toFixed(4)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-gray-400">ATR (14)</span>
-                        <span className="text-white font-bold">{ind.atr?.toFixed(4)}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Price Action */}
-                  <div>
-                    <p className="text-gray-500 text-xs mb-2 font-medium">PRICE ACTION</p>
-                    <div className="space-y-1.5">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-gray-400">Price</span>
-                        <span className="text-white font-bold">${ind.price?.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 4})}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-gray-400">Above EMA20</span>
-                        <span className={`font-bold ${ind.above_ema20 ? 'text-green-400' : 'text-red-400'}`}>
-                          {ind.above_ema20 ? 'YES ✓' : 'NO ✗'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-gray-400">Above EMA50</span>
-                        <span className={`font-bold ${ind.above_ema50 ? 'text-green-400' : 'text-red-400'}`}>
-                          {ind.above_ema50 ? 'YES ✓' : 'NO ✗'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-gray-400">Above EMA200</span>
-                        <span className={`font-bold ${ind.above_ema200 ? 'text-green-400' : 'text-red-400'}`}>
-                          {ind.above_ema200 ? 'YES ✓' : 'NO ✗'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-gray-400">Above VWAP</span>
-                        <span className={`font-bold ${ind.above_vwap ? 'text-green-400' : 'text-red-400'}`}>
-                          {ind.above_vwap ? 'YES ✓' : 'NO ✗'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Analyzed At */}
-                <p className="text-gray-600 text-xs mt-3">
-                  Analyzed: {new Date(tfData.analyzed_at).toLocaleTimeString()}
-                </p>
-              </div>
-            )
-          })}
+        <div className="flex items-center justify-center gap-1 text-xs text-blue-400 group-hover:text-blue-300 transition">
+          <span>View Full Professional Analysis</span>
+          <span>→</span>
         </div>
-      )}
-    </div>
+      </div>
+    </Link>
   )
 }
 
-// --- Main Dashboard ---
 export default function Dashboard() {
   const router = useRouter()
   const [user, setUser] = useState<{name: string, plan: string} | null>(null)
@@ -332,7 +161,6 @@ export default function Dashboard() {
     setUser(JSON.parse(stored))
     fetchSignals(token)
 
-    // Auto refresh every 60 seconds
     const interval = setInterval(() => {
       const t = localStorage.getItem('token')
       if (t) fetchSignals(t)
@@ -387,15 +215,11 @@ export default function Dashboard() {
             <h1 className="text-3xl font-bold text-white">
               Welcome back, {user?.name.split(' ')[0]}! 👋
             </h1>
-            <p className="text-gray-400 mt-1">
-              Professional grade signals across all markets
-            </p>
+            <p className="text-gray-400 mt-1">Professional grade signals across all markets</p>
           </div>
           <div className="flex items-center gap-3">
             {lastUpdated && (
-              <p className="text-gray-500 text-xs">
-                Updated {lastUpdated.toLocaleTimeString()}
-              </p>
+              <p className="text-gray-500 text-xs">Updated {lastUpdated.toLocaleTimeString()}</p>
             )}
             <button
               onClick={() => {
@@ -462,10 +286,8 @@ export default function Dashboard() {
         {activeTab === 'crypto' && (
           <div>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-white">
-                Crypto Signals — 9 Timeframes
-              </h2>
-              <p className="text-gray-500 text-xs">Click any card to expand full analysis</p>
+              <h2 className="text-lg font-bold text-white">Crypto Signals — 9 Timeframes</h2>
+              <p className="text-gray-500 text-xs">Click any card for full professional analysis</p>
             </div>
             {Object.keys(cryptoData).length === 0 ? (
               <div className="text-center py-16">
