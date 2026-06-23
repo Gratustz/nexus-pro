@@ -28,7 +28,7 @@ class Signal(Base):
 
     # --- Identity ---
     id = Column(
-        UUID(as_uuid=True),
+        String(36),
         primary_key=True,
         default=uuid.uuid4,
         index=True
