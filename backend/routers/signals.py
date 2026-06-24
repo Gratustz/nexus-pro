@@ -8,6 +8,8 @@ from engines.crypto_engine import CryptoEngine
 from engines.forex_engine import ForexEngine
 from engines.sports_engine import SportsEngine
 from engines.ai_signal import AISignal
+from core.config import settings
+import anthropic
 import logging
 
 logger = logging.getLogger(__name__)
@@ -22,24 +24,13 @@ def check_plan_access(user: User, required_plan: PlanType):
         PlanType.PRO: 1,
         PlanType.ELITE: 2
     }
-
     user_level = plan_hierarchy.get(user.plan, 0)
     required_level = plan_hierarchy.get(required_plan, 0)
-
     if user_level < required_level:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"This feature requires {required_plan} plan or higher"
         )
-
-
-# --- Get latest signals from DB ---
-def get_latest_signals(db: Session, market: MarketType, limit: int = 20):
-    return db.query(Signal).filter(
-        Signal.market == market
-    ).order_by(
-        Signal.created_at.desc()
-    ).limit(limit).all()
 
 
 # --- CRYPTO SIGNALS ---
@@ -50,67 +41,41 @@ async def get_crypto_signals(
     current_user: User = Depends(get_current_user)
 ):
     try:
-        # Free users get limited symbols
-        if current_user.plan == PlanType.FREE:
-            allowed_symbols = ["BTCUSDT", "ETHUSDT"]
-        elif current_user.plan == PlanType.PRO:
-            allowed_symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"]
-        else:
-            allowed_symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"]
+        from core.scheduler import get_cached, is_cache_valid, set_cached
 
-        if live:
-            # Run live analysis
+        # Use cache if valid and not forced live
+        if not live and is_cache_valid("crypto"):
+            results = get_cached("crypto")
+            logger.info(f"Serving crypto from cache — {len(results)} symbols")
+        else:
+            # Fetch fresh data
+            logger.info("Fetching fresh crypto data...")
             engine = CryptoEngine()
             results = await engine.run()
+            set_cached("crypto", results)
 
-            # Add AI summaries for PRO and ELITE
-            if current_user.plan != PlanType.FREE:
-                ai = AISignal()
-                results = await ai.enrich_crypto_signals(results)
+        # Filter by plan
+        if current_user.plan == PlanType.FREE:
+            allowed = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT"]
+        elif current_user.plan == PlanType.PRO:
+            allowed = list(results.keys())[:20]
+        else:
+            allowed = list(results.keys())
 
-            # Filter by plan
-            filtered = {
-                k: v for k, v in results.items()
-                if k in allowed_symbols
-            }
-
-            return {
-                "market": "crypto",
-                "plan": current_user.plan,
-                "data": filtered
-            }
-
-        # Return cached signals from DB
-        signals = get_latest_signals(db, MarketType.CRYPTO)
+        filtered = {k: v for k, v in results.items() if k in allowed}
 
         return {
             "market": "crypto",
             "plan": current_user.plan,
-            "data": [
-                {
-                    "id": str(s.id),
-                    "symbol": s.symbol,
-                    "direction": s.direction,
-                    "summary": s.summary,
-                    "ai_summary": s.ai_summary,
-                    "entry_price": s.entry_price,
-                    "take_profit": s.take_profit,
-                    "stop_loss": s.stop_loss,
-                    "timeframe": s.timeframe,
-                    "confidence": s.confidence,
-                    "indicators": s.indicators,
-                    "created_at": s.created_at
-                }
-                for s in signals
-                if s.symbol in allowed_symbols
-            ]
+            "cached": not live and is_cache_valid("crypto"),
+            "data": filtered
         }
 
     except Exception as e:
         logger.error(f"Crypto signals error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error fetching crypto signals"
+            detail=f"Error fetching crypto signals: {str(e)}"
         )
 
 
@@ -121,53 +86,30 @@ async def get_forex_signals(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    # Forex is PRO and above only
     check_plan_access(current_user, PlanType.PRO)
 
     try:
-        if live:
+        from core.scheduler import get_cached, is_cache_valid, set_cached
+
+        if not live and is_cache_valid("forex"):
+            results = get_cached("forex")
+        else:
             engine = ForexEngine()
             results = await engine.run()
-
-            # Add AI summaries for ELITE
-            if current_user.plan == PlanType.ELITE:
-                ai = AISignal()
-                results = await ai.enrich_forex_signals(results)
-
-            return {
-                "market": "forex",
-                "plan": current_user.plan,
-                "data": results
-            }
-
-        # Return cached signals from DB
-        signals = get_latest_signals(db, MarketType.FOREX)
+            set_cached("forex", results)
 
         return {
             "market": "forex",
             "plan": current_user.plan,
-            "data": [
-                {
-                    "id": str(s.id),
-                    "symbol": s.symbol,
-                    "direction": s.direction,
-                    "summary": s.summary,
-                    "ai_summary": s.ai_summary,
-                    "entry_price": s.entry_price,
-                    "timeframe": s.timeframe,
-                    "confidence": s.confidence,
-                    "indicators": s.indicators,
-                    "created_at": s.created_at
-                }
-                for s in signals
-            ]
+            "cached": not live and is_cache_valid("forex"),
+            "data": results
         }
 
     except Exception as e:
         logger.error(f"Forex signals error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error fetching forex signals"
+            detail=f"Error fetching forex signals: {str(e)}"
         )
 
 
@@ -178,66 +120,46 @@ async def get_sports_signals(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    # Sports is ELITE only
     check_plan_access(current_user, PlanType.ELITE)
 
     try:
-        if live:
+        from core.scheduler import get_cached, is_cache_valid, set_cached
+
+        if not live and is_cache_valid("sports"):
+            results = get_cached("sports")
+        else:
             engine = SportsEngine()
             results = await engine.run()
-
-            # Always add AI for ELITE
-            ai = AISignal()
-            results = await ai.enrich_sports_signals(results)
-
-            return {
-                "market": "sports",
-                "plan": current_user.plan,
-                "data": results
-            }
-
-        # Return cached signals from DB
-        signals = get_latest_signals(db, MarketType.SPORTS)
+            set_cached("sports", results)
 
         return {
             "market": "sports",
             "plan": current_user.plan,
-            "data": [
-                {
-                    "id": str(s.id),
-                    "symbol": s.symbol,
-                    "direction": s.direction,
-                    "summary": s.summary,
-                    "ai_summary": s.ai_summary,
-                    "confidence": s.confidence,
-                    "indicators": s.indicators,
-                    "created_at": s.created_at
-                }
-                for s in signals
-            ]
+            "cached": not live and is_cache_valid("sports"),
+            "data": results
         }
 
     except Exception as e:
         logger.error(f"Sports signals error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error fetching sports signals"
+            detail=f"Error fetching sports signals: {str(e)}"
         )
-    # --- AI Analysis endpoint ---
+
+
+# --- AI ANALYSIS ---
 @router.post("/ai-analysis")
 async def get_ai_analysis(
     request: dict,
     current_user: User = Depends(get_current_user)
 ):
     try:
-        from engines.ai_signal import AISignal
-        ai = AISignal()
-
         symbol = request.get("symbol", "")
         timeframe = request.get("timeframe", "")
         indicators = request.get("indicators", {})
         signal = request.get("signal", "HOLD")
         stats = request.get("stats", {})
+        extra_context = request.get("extra_context", "")
 
         prompt = f"""You are Nexus Pro — the best crypto trading analyst in Africa and the world.
 
@@ -247,17 +169,17 @@ Current Signal: {signal}
 
 Technical Indicators:
 - Price: ${indicators.get('price')}
-- RSI (14): {indicators.get('rsi')} {'(Oversold)' if indicators.get('rsi', 50) < 30 else '(Overbought)' if indicators.get('rsi', 50) > 70 else '(Neutral)'}
+- RSI (14): {indicators.get('rsi')} {'(Oversold)' if float(indicators.get('rsi', 50)) < 30 else '(Overbought)' if float(indicators.get('rsi', 50)) > 70 else '(Neutral)'}
 - Stochastic RSI: {indicators.get('stoch_rsi')}
 - EMA 20: {indicators.get('ema20')} — Price is {'ABOVE' if indicators.get('above_ema20') else 'BELOW'}
 - EMA 50: {indicators.get('ema50')} — Price is {'ABOVE' if indicators.get('above_ema50') else 'BELOW'}
 - EMA 200: {indicators.get('ema200')} — Price is {'ABOVE' if indicators.get('above_ema200') else 'BELOW'}
 - MACD: {indicators.get('macd')}
 - MACD Signal: {indicators.get('macd_signal')}
-- MACD Histogram: {indicators.get('macd_histogram')} {'(Bullish)' if indicators.get('macd_histogram', 0) > 0 else '(Bearish)'}
-- Bollinger Upper: {indicators.get('bb_upper')}
-- Bollinger Mid: {indicators.get('bb_mid')}
-- Bollinger Lower: {indicators.get('bb_lower')}
+- MACD Histogram: {indicators.get('macd_histogram')} {'(Bullish)' if float(indicators.get('macd_histogram', 0)) > 0 else '(Bearish)'}
+- BB Upper: {indicators.get('bb_upper')}
+- BB Mid: {indicators.get('bb_mid')}
+- BB Lower: {indicators.get('bb_lower')}
 - ATR: {indicators.get('atr')}
 - VWAP: {indicators.get('vwap')} — Price is {'ABOVE' if indicators.get('above_vwap') else 'BELOW'}
 - 24h Change: {stats.get('price_change_pct')}%
@@ -265,19 +187,20 @@ Technical Indicators:
 - 24h Low: ${stats.get('low_24h')}
 - Volume: {stats.get('volume_24h')}
 
-Provide a comprehensive professional trading analysis with:
+{extra_context}
+
+Provide a comprehensive professional trading analysis:
 
 1. SIGNAL SUMMARY — State the signal clearly and why
 2. TECHNICAL ANALYSIS — Explain what the indicators are saying
-3. KEY LEVELS — Identify support and resistance levels
-4. TRADE SETUP — Entry point, Stop Loss and Take Profit levels
-5. RISK ASSESSMENT — Risk level (Low/Medium/High) and explanation
-6. MARKET CONTEXT — What is happening in the broader market
-7. RECOMMENDATION — Clear actionable advice for a trader
+3. KEY LEVELS — Support and resistance levels
+4. TRADE SETUP — Entry point, Stop Loss and Take Profit
+5. RISK ASSESSMENT — Risk level and explanation
+6. MARKET CONTEXT — Broader market context
+7. RECOMMENDATION — Clear actionable advice
 
-Write like the best trader in Africa — clear, confident, professional and actionable."""
+Write like the best trader in Africa — clear, confident, professional."""
 
-        import anthropic
         client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
         message = client.messages.create(
             model="claude-sonnet-4-6",

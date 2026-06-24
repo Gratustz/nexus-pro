@@ -81,7 +81,7 @@ export default function TimeframePage() {
 
   const fetchData = async (token: string) => {
     try {
-      const res = await fetch(`${API_URL}/signals/crypto?live=true`, {
+      const res = await fetch(`${API_URL}/signals/crypto?live=false`, {
         headers: { Authorization: `Bearer ${token}` }
       })
       const json = await res.json()

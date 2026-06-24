@@ -172,7 +172,7 @@ export default function Dashboard() {
   const fetchSignals = async (token: string) => {
     try {
       setRefreshing(true)
-      const res = await fetch(`${API_URL}/signals/crypto?live=true`, {
+      const res = await fetch(`${API_URL}/signals/crypto?live=false`, {
         headers: { Authorization: `Bearer ${token}` }
       })
       const data = await res.json()
